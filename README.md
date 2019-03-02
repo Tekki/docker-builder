@@ -1,6 +1,6 @@
 # Docker Builder
 
-A script to build Docker projects like [docker-mojolicious](https://github.com/Tekki/docker-mojolicious).
+A script to build Docker images for projects like [docker-mojolicious](https://github.com/Tekki/docker-mojolicious).
 
 ## Synopsis
 
