@@ -123,12 +123,12 @@ sub update ($config) {
   my @templates = $config->{templates}->@*;
   my $from      = $config->{docker}->{from};
   my $warning   = q|#
-# this file is generated via docker-builder/update.pl
+# this file is generated via docker-builder/generate.pl
 #
 # do not edit it directly
 #|;
   my $html_warning
-    = '<!-- this file is generated via docker-builder/update.pl, do not edit it directly -->';
+    = '<!-- this file is generated via docker-builder/generate.pl, do not edit it directly -->';
 
   my (%args, $rendered, $tpl);
   for my $build (keys $config->{releases}->%*) {
@@ -160,8 +160,10 @@ sub update ($config) {
 
 =head1 SYNOPSIS
 
-  update.pl OPTIONS [PATH]
+  generate.pl OPTIONS [PATH]
     -u, --update
     -b, --build
     -c, --commit
     -p, --publish
+
+=cut
