@@ -21,7 +21,7 @@ my $config = Load path('config.yml')->slurp;
 for my $build (keys $config->{releases}->%*) {
   my $release = $config->{releases}{$build};
 
-  $release->{version_string} = join ', ', $release->{versions}->@*;
+  $release->{version_string} = join ', ', _all_versions($release);
 
   $release->{from} ||= $config->{docker}{from};
 
@@ -55,20 +55,44 @@ sub build ($config) {
       $pulled{$release->{from}} = 1;
     }
 
-    say qq|
-#
-# $image
-#
-# building image: $build $release->{versions}[0]
-#
-|;
+    if (_has_stages($release)) {
+      for my $stage (_all_stages($release, 1)) {
+        my $version = _first_version($release, $stage);
+        say <<~"...";
+          #
+          # $image
+          #
+          # building image: $build $stage $version
+          #
+          ...
 
-    my @cmd = qw|docker image build|;
-    for ($release->{versions}->@*) {
-      push @cmd, '-t', "$image:$_";
+        my @cmd = qw|docker image build|;
+        push @cmd, '--build-arg', 'NOW=' . _now();
+        push @cmd, '--target',    $stage;
+        for ($release->{versions}{$stage}->@*) {
+          push @cmd, '--tag', "$image:$_";
+        }
+        push @cmd, "$build/";
+        system(@cmd) == 0 or die $!;
+      }
+    } else {
+      my $version = _first_version($release);
+      say <<~"...";
+        #
+        # $image
+        #
+        # building image: $build $version
+        #
+        ...
+
+      my @cmd = qw|docker image build|;
+      push @cmd, '--build-arg', 'NOW=' . _now();
+      for ($release->{versions}->@*) {
+        push @cmd, '--tag', "$image:$_";
+      }
+      push @cmd, "$build/";
+      system(@cmd) == 0 or die $!;
     }
-    push @cmd, "$build/";
-    system(@cmd) == 0 or die $!;
   }
 }
 
@@ -88,13 +112,13 @@ sub commit ($config) {
 sub publish ($config) {
   my $image = $config->{docker}{image};
 
-  say qq|
-#
-# $image:
-#
-# - publish to Github
-#
-|;
+  say <<~"...";
+    #
+    # $image:
+    #
+    # publish to Github
+    #
+    ...
 
   my @cmd = qw|git push|;
   system(@cmd) == 0 or die $!;
@@ -102,13 +126,13 @@ sub publish ($config) {
   if ($image =~ /\//) {
     for my $build (keys $config->{releases}->%*) {
       my $release = $config->{releases}{$build};
-      say qq|
-#
-# $image
-#
-# publishing image: $build $release->{versions}[0]
-#
-|;
+      say <<~"...";
+        #
+        # $image
+        #
+        # publishing image: $build $release->{versions}[0]
+        #
+        ...
 
       @cmd = qw|docker image push|;
       for ($release->{versions}->@*) {
@@ -127,23 +151,25 @@ sub publish ($config) {
 sub update ($config) {
   my $mt        = Mojo::Template->new;
   my @templates = $config->{templates}->@*;
-  my $warning   = q|#
-# this file is generated via docker-builder/generate.pl
-#
-# do not edit it directly
-#|;
+  chomp(my $warning = <<~'...');
+    #
+    # this file is generated via docker-builder/generate.pl
+    #
+    # do not edit it directly
+    #
+    ...
   my $html_warning
     = '<!-- this file is generated via docker-builder/generate.pl, do not edit it directly -->';
 
   my (%args, $rendered);
   for my $build (keys $config->{releases}->%*) {
     my $release = $config->{releases}{$build};
-    my $version = $release->{versions}[0];
+    my $version = _first_version($release);
     my $from    = $release->{from};
     say "$build $version";
 
     # labels
-    my @labels;
+    my @labels    = ('ARG NOW=not-set');
     my $add_label = sub ($key, $value) {
       $value = qq|"$value"| if $value =~ /\s/;
       push @labels, qq|LABEL org.opencontainers.image.$key=$value|;
@@ -156,7 +182,7 @@ sub update ($config) {
     $add_label->(licenses => $config->{global}{license});
 
     $add_label->(version => $version);
-    $add_label->(created => strftime('%Y-%m-%dT%H:%M:%SZ', gmtime));
+    $add_label->(created => '$NOW');
 
     for my $context (qw|title description|) {
       my $text = $config->{global}{$context};
@@ -178,6 +204,14 @@ sub update ($config) {
       warning      => $warning
     );
 
+    # labels for stages
+    for my $stage (_all_stages($release)) {
+      @labels = ('ARG NOW=not-set');
+      $add_label->(created => '$NOW');
+      $add_label->(version => _first_version($release, $stage));
+      $args{"labels_$stage"} = join "\n", sort @labels;
+    }
+
     for my $template (@templates) {
       $rendered
         = $mt->vars(1)->render_file("templates/$template->{source}", \%args);
@@ -194,6 +228,46 @@ sub update ($config) {
   $args{from} = $config->{docker}{from} if $config->{docker}{from};
   $rendered = $mt->vars(1)->render_file('templates/readme.ep', \%args);
   path('README.md')->spurt(encode 'UTF-8', $rendered);
+}
+
+# internal functions
+
+sub _all_stages ($release, $with_base = 0) {
+  return () unless _has_stages($release);
+  die 'base stage not found' unless $release->{versions}{base};
+  my @stages;
+  push @stages, 'base' if $with_base;
+  push @stages, $_ for grep !/^base$/, sort keys $release->{versions}->%*;
+  return @stages;
+}
+
+sub _all_versions ($release) {
+  my @versions;
+  if (_has_stages($release)) {
+    @versions = $release->{versions}{base}->@*;
+    for my $stage (_all_stages($release)) {
+      push @versions, $release->{versions}{$stage}->@*;
+    }
+  } else {
+    @versions = $release->{versions}->@*;
+  }
+  return @versions;
+}
+
+sub _first_version ($release, $stage = 'base') {
+  if (_has_stages($release)) {
+    return $release->{versions}{$stage}[0];
+  } else {
+    return $release->{versions}[0];
+  }
+}
+
+sub _has_stages ($release) {
+  return ref $release->{versions} eq 'HASH';
+}
+
+sub _now {
+  return strftime('%Y-%m-%dT%H:%M:%SZ', gmtime);
 }
 
 =head1 SYNOPSIS
