@@ -100,7 +100,7 @@ sub build ($config) {
 
 sub commit ($config) {
   my $git_version
-    = $config->{git}{version} || $config->{releases}{main}{versions}[0]
+    = $config->{git}{version} || _first_version($config->{releases}{main})
     or die 'No git version found.';
   my @cmd = (qw|git commit -am|, qq|Update to version $git_version.|);
 
@@ -123,26 +123,44 @@ sub publish ($config) {
   my @cmd = qw|git push|;
   system(@cmd) == 0 or die $!;
 
-  if ($image =~ /\//) {
-    for my $build (keys $config->{releases}->%*) {
-      my $release = $config->{releases}{$build};
+  unless ($image =~ /\//) {
+    say '# (not published to Dockerhub)';
+    return;
+  }
+    
+  @cmd = qw|docker image push|;
+  for my $build (keys $config->{releases}->%*) {
+    my $release = $config->{releases}{$build};
+
+    if (_has_stages($release)) {
+      for my $stage (_all_stages($release, 1)) {
+        my $version = _first_version($release, $stage);
+        say <<~"...";
+          #
+          # $image
+          #
+          # publishing image: $build $stage $version
+          #
+          ...
+
+        for (_all_versions($release, $stage)) {
+          system(@cmd, "$image:$_") == 0 or die $!;
+        }
+      }
+    } else {
+      my $version = _first_version($release);
       say <<~"...";
         #
         # $image
         #
-        # publishing image: $build $release->{versions}[0]
+        # publishing image: $build $version
         #
         ...
 
-      @cmd = qw|docker image push|;
-      for ($release->{versions}->@*) {
+      for (_all_versions($release)) {
         system(@cmd, "$image:$_") == 0 or die $!;
       }
-      system(@cmd, $release->{latest} ? "$image:latest" : "$image:$build") == 0
-        or die $!;
     }
-  } else {
-    say '# (not published to Dockerhub)';
   }
 }
 
@@ -241,10 +259,10 @@ sub _all_stages ($release, $with_base = 0) {
   return @stages;
 }
 
-sub _all_versions ($release) {
+sub _all_versions ($release, $stage = 'base') {
   my @versions;
   if (_has_stages($release)) {
-    @versions = $release->{versions}{base}->@*;
+    @versions = $release->{versions}{$stage}->@*;
     for my $stage (_all_stages($release)) {
       push @versions, $release->{versions}{$stage}->@*;
     }
