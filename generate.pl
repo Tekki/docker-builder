@@ -73,6 +73,7 @@ sub build ($config) {
           push @cmd, '--tag', "$image:$_";
         }
         push @cmd, "$build/";
+        $ENV{DOCKER_BUILDKIT}=1 if $config->{docker}{buildkit};
         system(@cmd) == 0 or die $!;
       }
     } else {
@@ -91,6 +92,7 @@ sub build ($config) {
         push @cmd, '--tag', "$image:$_";
       }
       push @cmd, "$build/";
+      $ENV{DOCKER_BUILDKIT}=1 if $config->{docker}{buildkit};
       system(@cmd) == 0 or die $!;
     }
   }
