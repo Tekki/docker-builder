@@ -131,7 +131,7 @@ sub publish ($config) {
   }
     
   @cmd = qw|docker image push|;
-  for my $build (keys $config->{releases}->%*) {
+  for my $build (sort keys $config->{releases}->%*) {
     my $release = $config->{releases}{$build};
 
     if (_has_stages($release)) {
@@ -182,7 +182,7 @@ sub update ($config) {
     = '<!-- this file is generated via docker-builder/generate.pl, do not edit it directly -->';
 
   my (%args, $rendered);
-  for my $build (keys $config->{releases}->%*) {
+  for my $build (sort keys $config->{releases}->%*) {
     my $release = $config->{releases}{$build};
     my $version = _first_version($release);
     my $from    = $release->{from};
