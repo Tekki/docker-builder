@@ -206,6 +206,7 @@ sub update ($config) {
 
     for my $context (qw|title description|) {
       my $text = $config->{global}{$context};
+      $text =~ s/\n//g;
       $text =~ s/\[(.*?)\]\(.*?\)/$1/g;
       $add_label->($context => $text);
     }
