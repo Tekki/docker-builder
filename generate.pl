@@ -10,12 +10,14 @@ use YAML::XS;
 chdir $ARGV[0] if $ARGV[0];
 
 getopt
+  'a|all'     => \my $all,
   'b|build'   => \my $build,
   'c|commit'  => \my $commit,
   'p|publish' => \my $publish,
+  'r|readme'  => \my $readme,
   'u|update'  => \my $update;
 
-die 'Usage: ' . extract_usage unless $build || $commit || $publish || $update;
+die 'Usage: ' . extract_usage unless $all || $build || $commit || $publish || $readme || $update;
 
 my $config = Load path('config.yml')->slurp;
 for my $build (keys $config->{releases}->%*) {
@@ -35,10 +37,11 @@ for my $build (keys $config->{releases}->%*) {
   $release->{keyserver} ||= 'ha.pool.sks-keyservers.net';
 }
 
-update($config)  if $update;
-build($config)   if $build;
-commit($config)  if $commit;
-publish($config) if $publish;
+update($config)  if $update  || $all;
+build($config)   if $build   || $all;
+commit($config)  if $commit  || $all;
+publish($config) if $publish || $all;
+readme($config)  if $readme  || $all;
 
 # build images
 
@@ -73,7 +76,7 @@ sub build ($config) {
           push @cmd, '--tag', "$image:$_";
         }
         push @cmd, "$build/";
-        $ENV{DOCKER_BUILDKIT}=1 if $config->{docker}{buildkit};
+        $ENV{DOCKER_BUILDKIT} = 1 if $config->{docker}{buildkit};
         system(@cmd) == 0 or die $!;
       }
     } else {
@@ -92,7 +95,7 @@ sub build ($config) {
         push @cmd, '--tag', "$image:$_";
       }
       push @cmd, "$build/";
-      $ENV{DOCKER_BUILDKIT}=1 if $config->{docker}{buildkit};
+      $ENV{DOCKER_BUILDKIT} = 1 if $config->{docker}{buildkit};
       system(@cmd) == 0 or die $!;
     }
   }
@@ -101,8 +104,7 @@ sub build ($config) {
 # git commit
 
 sub commit ($config) {
-  my $git_version
-    = $config->{git}{version} || _first_version($config->{releases}{main})
+  my $git_version = $config->{git}{version} || _first_version($config->{releases}{main})
     or die 'No git version found.';
   my @cmd = (qw|git commit -am|, qq|Update to version $git_version.|);
 
@@ -129,7 +131,7 @@ sub publish ($config) {
     say '# (not published to Dockerhub)';
     return;
   }
-    
+
   @cmd = qw|docker image push|;
   for my $build (sort keys $config->{releases}->%*) {
     my $release = $config->{releases}{$build};
@@ -164,6 +166,17 @@ sub publish ($config) {
       }
     }
   }
+}
+
+# copy readme to Windows clipboard (WSL)
+
+sub readme ($config) {
+  system('cat README.md | clip.exe') == 0 or die 'Windows clipboard not available!';
+  say <<~"...";
+    #
+    # README copied to Windows clipboard
+    #
+    ...
 }
 
 # update files using templates
@@ -234,8 +247,7 @@ sub update ($config) {
     }
 
     for my $template (@templates) {
-      $rendered
-        = $mt->vars(1)->render_file("templates/$template->{source}", \%args);
+      $rendered = $mt->vars(1)->render_file("templates/$template->{source}", \%args);
 
       $target->child($template->{target})->spurt(encode 'UTF-8', $rendered);
     }
@@ -298,5 +310,7 @@ sub _now {
     -b, --build
     -c, --commit
     -p, --publish
+    -r, --readme
+    -a, --all
 
 =cut
