@@ -1,6 +1,7 @@
 #! /usr/bin/env perl
 use Mojo::Base -strict, -signatures;
 
+use Print::Colored ':all';
 use Mojo::File 'path';
 use Mojo::Template;
 use Mojo::Util qw|decode encode extract_usage getopt|;
@@ -15,9 +16,11 @@ getopt
   'c|commit'  => \my $commit,
   'p|publish' => \my $publish,
   'r|readme'  => \my $readme,
+  't|test'    => \my $test,
   'u|update'  => \my $update;
 
-die 'Usage: ' . extract_usage unless $all || $build || $commit || $publish || $readme || $update;
+die color_error 'Usage: ' . extract_usage
+  unless $all || $build || $commit || $publish || $readme || $test || $update;
 
 my $config = Load path('config.yml')->slurp;
 for my $build (keys $config->{releases}->%*) {
@@ -39,9 +42,10 @@ for my $build (keys $config->{releases}->%*) {
 
 update($config)  if $update  || $all;
 build($config)   if $build   || $all;
+test($config)    if $test    || $all;
 commit($config)  if $commit  || $all;
-publish($config) if $publish || $all;
 readme($config)  if $readme  || $all;
+publish($config) if $publish || $all;
 
 # build images
 
@@ -54,7 +58,7 @@ sub build ($config) {
     my $release = $config->{releases}{$build};
     unless ($pulled{$release->{from}}) {
       my @cmd = (qw|docker image pull|, $release->{from});
-      system(@cmd) == 0 or die $!;
+      system(@cmd) == 0 or die color_error $!;
       $pulled{$release->{from}} = 1;
     }
 
@@ -77,7 +81,7 @@ sub build ($config) {
         }
         push @cmd, "$build/";
         $ENV{DOCKER_BUILDKIT} = 1 if $config->{docker}{buildkit};
-        system(@cmd) == 0 or die $!;
+        system(@cmd) == 0 or die color_error $!;
       }
     } else {
       my $version = _first_version($release);
@@ -96,7 +100,7 @@ sub build ($config) {
       }
       push @cmd, "$build/";
       $ENV{DOCKER_BUILDKIT} = 1 if $config->{docker}{buildkit};
-      system(@cmd) == 0 or die $!;
+      system(@cmd) == 0 or die color_error $!;
     }
   }
 }
@@ -105,10 +109,10 @@ sub build ($config) {
 
 sub commit ($config) {
   my $git_version = $config->{git}{version} || _first_version($config->{releases}{main})
-    or die 'No git version found.';
+    or die color_error 'No git version found.';
   my @cmd = (qw|git commit -am|, qq|Update to version $git_version.|);
 
-  system(@cmd) == 0 or die $!;
+  system(@cmd) == 0 or die color_error $!;
 }
 
 # publish to Github and Dockerhub
@@ -125,7 +129,7 @@ sub publish ($config) {
     ...
 
   my @cmd = qw|git push|;
-  system(@cmd) == 0 or die $!;
+  system(@cmd) == 0 or die color_error $!;
 
   unless ($image =~ /\//) {
     say '# (not published to Dockerhub)';
@@ -148,7 +152,7 @@ sub publish ($config) {
           ...
 
         for (_all_versions($release, $stage)) {
-          system(@cmd, "$image:$_") == 0 or die $!;
+          system(@cmd, "$image:$_") == 0 or die color_error $!;
         }
       }
     } else {
@@ -162,7 +166,7 @@ sub publish ($config) {
         ...
 
       for (_all_versions($release)) {
-        system(@cmd, "$image:$_") == 0 or die $!;
+        system(@cmd, "$image:$_") == 0 or die color_error $!;
       }
     }
   }
@@ -171,12 +175,29 @@ sub publish ($config) {
 # copy readme to Windows clipboard (WSL)
 
 sub readme ($config) {
-  system('cat README.md | clip.exe') == 0 or die 'Windows clipboard not available!';
+  system('cat README.md | clip.exe') == 0 or die color_error 'Windows clipboard not available!';
   say <<~"...";
     #
     # README copied to Windows clipboard
     #
     ...
+}
+
+# test
+
+sub test ($config) {
+  my $testfile = '.project/test.sh';
+  if ($testfile) {
+    system($testfile) == 0 or die color_error $!;
+
+    my $continue = prompt_input 'Continue [y]: ', -default => 'y';
+    unless ($continue =~ /y/i) {
+      say_warn 'Aborted by user.';
+      exit;
+    }
+  } else {
+    say color_warn 'No test script available!';
+  }
 }
 
 # update files using templates
@@ -267,7 +288,7 @@ sub update ($config) {
 
 sub _all_stages ($release, $with_base = 0) {
   return () unless _has_stages($release);
-  die 'base stage not found' unless $release->{versions}{base};
+  die color_error 'base stage not found' unless $release->{versions}{base};
   my @stages;
   push @stages, 'base' if $with_base;
   push @stages, $_ for grep !/^base$/, sort keys $release->{versions}->%*;
@@ -308,9 +329,10 @@ sub _now {
   generate.pl OPTIONS [PATH]
     -u, --update
     -b, --build
+    -t, --test
     -c, --commit
-    -p, --publish
     -r, --readme
+    -p, --publish
     -a, --all
 
 =cut
