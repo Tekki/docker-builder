@@ -41,10 +41,10 @@ for my $build (keys $config->{releases}->%*) {
 }
 
 update($config)  if $update  || $all;
+readme($config)  if $readme  || $all;
 build($config)   if $build   || $all;
 test($config)    if $test    || $all;
 commit($config)  if $commit  || $all;
-readme($config)  if $readme  || $all;
 publish($config) if $publish || $all;
 
 # build images
@@ -173,12 +173,23 @@ sub publish ($config) {
 }
 
 # copy readme to Windows clipboard (WSL)
+#
+# sub readme ($config) {
+#   system('cat README.md | clip.exe') == 0 or die color_error 'Windows clipboard not available!';
+#   say <<~"...";
+#     #
+#     # README copied to Windows clipboard
+#     #
+#     ...
+# }
+
+# copy readme to Klipper (KDE)
 
 sub readme ($config) {
-  system('cat README.md | clip.exe') == 0 or die color_error 'Windows clipboard not available!';
+  system('qdbus org.kde.klipper /klipper setClipboardContents "$(cat README.md)"') == 0 or die color_error 'Klipper not available!';
   say <<~"...";
     #
-    # README copied to Windows clipboard
+    # README copied to Klipper
     #
     ...
 }
@@ -328,10 +339,10 @@ sub _now {
 
   generate.pl OPTIONS [PATH]
     -u, --update
+    -r, --readme
     -b, --build
     -t, --test
     -c, --commit
-    -r, --readme
     -p, --publish
     -a, --all
 
