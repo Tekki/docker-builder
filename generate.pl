@@ -41,9 +41,9 @@ for my $build (keys $config->{releases}->%*) {
 }
 
 update($config)  if $update  || $all;
-readme($config)  if $readme  || $all;
 build($config)   if $build   || $all;
 test($config)    if $test    || $all;
+readme($config)  if $readme  || $all;
 commit($config)  if $commit  || $all;
 publish($config) if $publish || $all;
 
@@ -339,9 +339,9 @@ sub _now {
 
   generate.pl OPTIONS [PATH]
     -u, --update
-    -r, --readme
     -b, --build
     -t, --test
+    -r, --readme
     -c, --commit
     -p, --publish
     -a, --all
