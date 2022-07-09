@@ -229,6 +229,12 @@ sub update ($config) {
   my (%args, $rendered);
   for my $build (sort keys $config->{releases}->%*) {
     my $release = $config->{releases}{$build};
+
+    if ($release->{skip_update}) {
+     say_info "Skipping $build";
+     next;
+    }
+
     my $version = _first_version($release);
     my $from    = $release->{from};
     say "$build $version";
