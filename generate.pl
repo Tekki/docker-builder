@@ -4,7 +4,7 @@ use Mojo::Base -strict, -signatures;
 use Print::Colored ':all';
 use Mojo::File 'path';
 use Mojo::Template;
-use Mojo::Util qw|decode encode extract_usage getopt|;
+use Mojo::Util qw|decode extract_usage getopt|;
 use POSIX 'strftime';
 use YAML::XS;
 
@@ -287,7 +287,7 @@ sub update ($config) {
     for my $template (@templates) {
       $rendered = $mt->vars(1)->render_file("templates/$template->{source}", \%args);
 
-      $target->child($template->{target})->spurt(encode 'UTF-8', $rendered);
+      $target->child($template->{target})->spew($rendered, 'UTF-8');
     }
   }
 
@@ -298,7 +298,7 @@ sub update ($config) {
   );
   $args{from} = $config->{docker}{from} if $config->{docker}{from};
   $rendered = $mt->vars(1)->render_file('templates/readme.ep', \%args);
-  path('README.md')->spurt(encode 'UTF-8', $rendered);
+  path('README.md')->spew($rendered, 'UTF-8');
 }
 
 # internal functions
